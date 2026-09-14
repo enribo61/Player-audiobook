@@ -860,11 +860,13 @@
 
       try {
         const extractedChapters = await extractM4BChapters(file);
+        const extractedCover = await extractM4BCover(file);
         const normalizedBlob = file.slice(0, file.size, "audio/mp4");
         const bookData = {
           title: title,
           blob: normalizedBlob,
           chapters: extractedChapters,
+          cover: extractedCover,
           date: Date.now()
         };
         const id = await dbOps.add("books", bookData);
