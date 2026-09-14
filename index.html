@@ -537,52 +537,45 @@
        ==================================================================== */
     
     async function extractM4BCover(file) {
-          return new Promise((resolve) => {
-            console.log("[Cover Parser] Inizio scansione file:", file.name, "Dimensione:", file.size);
-            const reader = new FileReader();
-            reader.onload = () => {
-              try {
-                const buf = new Uint8Array(reader.result);
-                const view = new DataView(reader.result);
-                const len = buf.length;
-                console.log("[Cover Parser] Buffer caricato in memoria, byte letti:", len);
+  // Scansione bifasica: primi 20MB e, se assente, ultimi 20MB (per file senza faststart)
+  const ranges = [{ start: 0, end: Math.min(file.size, 20 * 1024 * 1024) }];
+  if (file.size > 20 * 1024 * 1024) {
+    ranges.push({ start: file.size - Math.min(file.size, 20 * 1024 * 1024), end: file.size });
+  }
 
-                for (let i = 0; i < len - 28; i++) {
-                  // Cerca 'covr' (0x63, 0x6F, 0x76, 0x72)
-                  if (buf[i] === 0x63 && buf[i+1] === 0x6F && buf[i+2] === 0x76 && buf[i+3] === 0x72) {
-                    console.log("[Cover Parser] Trovato atomo covr all'offset:", i);
-                    // Cerca 'data' a i+8
-                    if (buf[i+8] === 0x64 && buf[i+9] === 0x61 && buf[i+10] === 0x74 && buf[i+11] === 0x61) {
-                      const dataAtomSize = view.getUint32(i + 4);
-                      console.log("[Cover Parser] Trovato sotto-atomo data, dimensione:", dataAtomSize);
-                      const imgStart = i + 20;
-                      const imgEnd = i + 4 + dataAtomSize;
-                      const imgPayload = buf.slice(imgStart, imgEnd);
-                      
-                      const blob = new Blob([imgPayload], { type: "image/jpeg" });
-                      const bReader = new FileReader();
-                      bReader.onloadend = () => {
-                        console.log("[Cover Parser] Generato Data URL JPEG, lunghezza caratteri:", bReader.result.length);
-                        resolve(bReader.result);
-                      };
-                      bReader.onerror = () => resolve("");
-                      bReader.readAsDataURL(blob);
-                      return;
-                    }
-                  }
-                }
-                console.warn("[Cover Parser] Nessun atomo covr trovato nel buffer!");
-                resolve("");
-              } catch (e) {
-                console.error("[Cover Parser] Eccezione:", e);
-                resolve("");
-              }
-            };
-            reader.onerror = () => resolve("");
-            // Leggiamo fino a 30MB per sicurezza assoluta
-            reader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 30 * 1024 * 1024)));
+  for (const r of ranges) {
+    const sliceBlob = file.slice(r.start, r.end);
+    const arrayBuf = await sliceBlob.arrayBuffer();
+    const buf = new Uint8Array(arrayBuf);
+    const view = new DataView(arrayBuf);
+    const len = buf.length;
+    
+    console.log(`[Cover Parser] Scansione range ${r.start}-${r.end} (dim: ${len} bytes)`);
+
+    for (let i = 0; i < len - 28; i++) {
+      if (buf[i] === 0x63 && buf[i+1] === 0x6F && buf[i+2] === 0x76 && buf[i+3] === 0x72) {
+        console.log("[Cover Parser] Trovato atomo covr all'offset locale:", i);
+        if (buf[i+8] === 0x64 && buf[i+9] === 0x61 && buf[i+10] === 0x74 && buf[i+11] === 0x61) {
+          const dataAtomSize = view.getUint32(i + 4);
+          const imgStart = i + 20;
+          const imgEnd = i + 4 + dataAtomSize;
+          const imgPayload = buf.slice(imgStart, imgEnd);
+          
+          const blob = new Blob([imgPayload], { type: "image/jpeg" });
+          return await new Promise((resolve) => {
+            const bReader = new FileReader();
+            bReader.onloadend = () => resolve(bReader.result);
+            bReader.onerror = () => resolve("");
+            bReader.readAsDataURL(blob);
           });
         }
+      }
+    }
+  }
+  console.warn("[Cover Parser] Nessun atomo covr trovato né in testa né in coda!");
+  return "";
+}
+
 
     async function extractM4BChapters(file) {
       return new Promise((resolve) => {
