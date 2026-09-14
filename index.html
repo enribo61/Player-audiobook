@@ -649,6 +649,32 @@
     const audioMaster = document.getElementById("audioMaster");
     const soundscapeMaster = document.getElementById("soundscapeMaster");
 
+let audioCtx = null;
+let narratorGain = null;
+let soundscapeGain = null;
+
+function initAudioEngine() {
+  if (audioCtx) return;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  audioCtx = new AudioContextClass();
+
+  const narratorSource = audioCtx.createMediaElementSource(audioMaster);
+  narratorGain = audioCtx.createGain();
+  narratorSource.connect(narratorGain);
+  narratorGain.connect(audioCtx.destination);
+
+  const soundscapeSource = audioCtx.createMediaElementSource(soundscapeMaster);
+  soundscapeGain = audioCtx.createGain();
+  soundscapeSource.connect(soundscapeGain);
+  soundscapeGain.connect(audioCtx.destination);
+
+  const vNarr = parseFloat(document.getElementById("volNarrator").value || 1.0);
+  const vScape = parseFloat(document.getElementById("volSoundscape").value || 0.2);
+  narratorGain.gain.setValueAtTime(vNarr, audioCtx.currentTime);
+  soundscapeGain.gain.setValueAtTime(vScape, audioCtx.currentTime);
+}
+
     let currentBook = null;
     let currentChapters = [];
     let currentChapterIndex = 0;
@@ -683,8 +709,14 @@
 
       if (audioMaster.paused) {
         try {
-          await audioMaster.play();
-          if (soundscapeMaster.src) soundscapeMaster.play();
+          initAudioEngine();
+      if (audioCtx && audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      await audioMaster.play();
+      if (soundscapeMaster.src) {
+        try { await soundscapeMaster.play(); } catch(e) { console.warn("Soundscape play deferred", e); }
+      }
           playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
           updateMediaSession();
         } catch (err) {
@@ -808,11 +840,19 @@
     }
 
     document.getElementById("volNarrator").oninput = (e) => {
-      audioMaster.volume = parseFloat(e.target.value);
-    };
-    document.getElementById("volSoundscape").oninput = (e) => {
-      soundscapeMaster.volume = parseFloat(e.target.value);
-    };
+  const val = parseFloat(e.target.value);
+  audioMaster.volume = val;
+  if (narratorGain && audioCtx) {
+    narratorGain.gain.setValueAtTime(val, audioCtx.currentTime);
+  }
+};
+document.getElementById("volSoundscape").oninput = (e) => {
+  const val = parseFloat(e.target.value);
+  soundscapeMaster.volume = val;
+  if (soundscapeGain && audioCtx) {
+    soundscapeGain.gain.setValueAtTime(val, audioCtx.currentTime);
+  }
+};
     document.getElementById("selSpeed").onchange = (e) => {
       audioMaster.playbackRate = parseFloat(e.target.value);
     };
