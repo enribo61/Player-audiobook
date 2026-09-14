@@ -535,6 +535,40 @@
     /* ====================================================================
        PARSER BINARIO VELOCE PER ATOM CHPL / TABELLE FFMPEG QUICKTIME
        ==================================================================== */
+    
+    async function extractM4BCover(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const buf = new Uint8Array(reader.result);
+            const view = new DataView(reader.result);
+            const len = buf.length;
+            for (let i = 0; i < len - 24; i++) {
+              if (buf[i] === 0x63 && buf[i+1] === 0x6F && buf[i+2] === 0x76 && buf[i+3] === 0x72) {
+                let p = i + 4;
+                if (buf[p+4] === 0x64 && buf[p+5] === 0x61 && buf[p+6] === 0x74 && buf[p+7] === 0x61) {
+                  const dataSize = view.getUint32(p);
+                  const imgPayload = buf.slice(p + 16, p + dataSize);
+                  const blob = new Blob([imgPayload], { type: "image/jpeg" });
+                  const bReader = new FileReader();
+                  bReader.onloadend = () => resolve(bReader.result);
+                  bReader.onerror = () => resolve("");
+                  bReader.readAsDataURL(blob);
+                  return;
+                }
+              }
+            }
+            resolve("");
+          } catch (e) {
+            resolve("");
+          }
+        };
+        reader.onerror = () => resolve("");
+        reader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 15 * 1024 * 1024)));
+      });
+    }
+
     async function extractM4BChapters(file) {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -873,6 +907,10 @@
       audioMaster.load();
 
       document.getElementById("playerTitle").textContent = book.title;
+      const coverElem = document.getElementById("playerCover");
+      if (coverElem) {
+        coverElem.src = book.cover || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' fill='%23222'%3E%3Crect width='200' height='200'/%3E%3C/svg%3E";
+      }
 
       const savedPos = parseFloat(localStorage.getItem(`pos_${book.id}`) || 0);
       audioMaster.onloadedmetadata = () => {
