@@ -544,12 +544,16 @@
             const buf = new Uint8Array(reader.result);
             const view = new DataView(reader.result);
             const len = buf.length;
-            for (let i = 0; i < len - 24; i++) {
+            for (let i = 0; i < len - 28; i++) {
+              // Cerca atomo 'covr' (0x63, 0x6F, 0x76, 0x72)
               if (buf[i] === 0x63 && buf[i+1] === 0x6F && buf[i+2] === 0x76 && buf[i+3] === 0x72) {
-                let p = i + 4;
-                if (buf[p+4] === 0x64 && buf[p+5] === 0x61 && buf[p+6] === 0x74 && buf[p+7] === 0x61) {
-                  const dataSize = view.getUint32(p);
-                  const imgPayload = buf.slice(p + 16, p + dataSize);
+                // All'offset i+8 troviamo l'atomo 'data' (0x64, 0x61, 0x74, 0x61)
+                if (buf[i+8] === 0x64 && buf[i+9] === 0x61 && buf[i+10] === 0x74 && buf[i+11] === 0x61) {
+                  const dataAtomSize = view.getUint32(i + 4);
+                  // Il payload immagine inizia a i + 20 (salta 4b 'covr' + 4b size + 4b 'data' + 8b flags/type)
+                  const imgStart = i + 20;
+                  const imgEnd = i + 4 + dataAtomSize;
+                  const imgPayload = buf.slice(imgStart, imgEnd);
                   const blob = new Blob([imgPayload], { type: "image/jpeg" });
                   const bReader = new FileReader();
                   bReader.onloadend = () => resolve(bReader.result);
@@ -565,7 +569,7 @@
           }
         };
         reader.onerror = () => resolve("");
-        reader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 15 * 1024 * 1024)));
+        reader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 20 * 1024 * 1024)));
       });
     }
 
